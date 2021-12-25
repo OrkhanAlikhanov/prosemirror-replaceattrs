@@ -8,14 +8,14 @@ export class ReplaceAttrsStep<S extends Schema> extends Step<S> {
    * {@inheritDoc}
    */
   public static fromJSON(_schema: Schema, json: any) {
-    return new ReplaceAttrsStep(json.at, json.attrs);
+    return new ReplaceAttrsStep(json.at, json.attrs, json.oldAttrs);
   }
 
   /**
    * @param at The position of node whose attrs should be updated.
    * @param attrs New attribues to set.
    */
-  constructor(public at: number, public attrs: any) {
+  constructor(public at: number, public attrs: any, public oldAttrs: any = {}) {
     super();
   }
 
@@ -28,19 +28,24 @@ export class ReplaceAttrsStep<S extends Schema> extends Step<S> {
       return StepResult.fail('Node could not be found');
     }
 
-    const newNode = node.copy();
+    this.oldAttrs = node.attrs;
+    const newNode = node.copy(node.content);
     newNode.attrs = this.attrs;
 
     return StepResult.ok(
-      doc.replace(this.at, this.at + 1, new Slice(Fragment.from(newNode), 0, 0))
+      doc.replace(
+        this.at,
+        this.at + node.nodeSize,
+        new Slice(Fragment.from(newNode), 0, 0)
+      )
     );
   }
 
   /**
    * {@inheritDoc}
    */
-  public invert(doc: Node) {
-    return new ReplaceAttrsStep(this.at, doc.nodeAt(this.at)!.attrs);
+  public invert() {
+    return new ReplaceAttrsStep(this.at, this.oldAttrs, this.attrs);
   }
 
   /**
@@ -48,7 +53,9 @@ export class ReplaceAttrsStep<S extends Schema> extends Step<S> {
    */
   public map(mapping: any) {
     const at = mapping.mapResult(this.at);
-    return at.deleted ? null : new ReplaceAttrsStep(this.at, this.attrs);
+    return at.deleted
+      ? null
+      : new ReplaceAttrsStep(at.pos, this.attrs, this.oldAttrs);
   }
 
   /**
@@ -56,7 +63,7 @@ export class ReplaceAttrsStep<S extends Schema> extends Step<S> {
    */
   public merge(other: Step): Step | null {
     if (other instanceof ReplaceAttrsStep && other.at === this.at) {
-      return new ReplaceAttrsStep(this.at, this.attrs);
+      return new ReplaceAttrsStep(this.at, this.attrs, this.oldAttrs);
     }
 
     return null;
@@ -68,6 +75,7 @@ export class ReplaceAttrsStep<S extends Schema> extends Step<S> {
   public toJSON() {
     return {
       attrs: this.attrs,
+      oldAttrs: this.oldAttrs,
       at: this.at,
       stepType: 'replaceAttrs'
     };
